@@ -1,2 +1,3 @@
 User-agent: *
 Allow: /
+Sitemap: https://babyilife.github.io/inmu-king-stats/sitemap.xml
