@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INMU KING 統計ダッシュボード｜再生数・高評価・登録者数の推移</title>
+<meta name="description" content="YAJU-MC「INMU KING（修正版）」の再生数・高評価数・コメント数・チャンネル登録者数を5分ごとに記録し、累計推移と期間変動（ローリング差分）をグラフで公開しています。">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="INMU KING 統計ダッシュボード">
+<meta property="og:description" content="「INMU KING（修正版）」の再生数などを5分ごとに記録。累計推移・1時間あたり再生数（過去60分差分）・期間変動グラフを公開中。">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","name":"INMU KING 統計ダッシュボード","inLanguage":"ja","description":"YAJU-MC「INMU KING（修正版）」の再生数・高評価数・コメント数・チャンネル登録者数を5分ごとに記録し、推移グラフを公開するサイト。"}
+</script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --line:#2a2f3a;
+    --text:#e8eaf0; --sub:#9aa3b2; --accent:#ff4e45; --accent2:#ffb020;
+    --good:#3ddc84; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;}
+  header{padding:20px 16px 8px;max-width:1100px;margin:0 auto;}
+  h1{font-size:22px;margin:0 0 4px;}
+  h1 .king{color:var(--accent)}
+  .lead{color:var(--sub);font-size:13px;margin:0;}
+  .lead a{color:var(--accent2);text-decoration:none}
+  main{max-width:1100px;margin:0 auto;padding:8px 16px 40px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+  .card .label{color:var(--sub);font-size:12px;margin-bottom:6px;}
+  .card .value{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .card .deltas{margin-top:8px;font-size:12px;color:var(--sub);display:flex;gap:12px;flex-wrap:wrap;}
+  .up{color:var(--good)} .down{color:var(--bad)}
+  section.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0;}
+  section.panel h2{font-size:15px;margin:0 0 4px;}
+  section.panel .hint{color:var(--sub);font-size:12px;margin:0 0 10px;}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;}
+  .controls .group{display:flex;gap:4px;flex-wrap:wrap;}
+  .controls .glabel{font-size:12px;color:var(--sub);margin-right:2px;align-self:center;}
+  button.chip{background:var(--panel2);color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:12px;cursor:pointer;}
+  button.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+  button.chip.alt.on{background:var(--accent2);border-color:var(--accent2);color:#1a1200;}
+  canvas{width:100%;display:block;}
+  .meta{color:var(--sub);font-size:12px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;}
+  .meta button{background:none;border:1px solid var(--line);color:var(--sub);border-radius:8px;padding:4px 10px;cursor:pointer;font-size:12px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;}
+  th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;}
+  th{color:var(--sub);font-weight:600;}
+  td:first-child,th:first-child{text-align:left;}
+  .tablewrap{overflow-x:auto;}
+  footer{max-width:1100px;margin:0 auto;padding:0 16px 30px;color:var(--sub);font-size:12px;}
+  #tooltip{position:fixed;pointer-events:none;background:rgba(10,12,16,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;display:none;z-index:10;font-variant-numeric:tabular-nums;}
+  .err{background:#3a1d1d;border:1px solid #6e2b2b;color:#ffb4b4;border-radius:8px;padding:10px 12px;font-size:13px;display:none;margin:12px 0;}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="king">INMU KING</span> 統計ダッシュボード</h1>
+  <p class="lead">YAJU-MC「<a href="https://www.youtube.com/watch?v=RkcI7ase0H0" rel="noopener" target="_blank">INMU KING（修正版）</a>」（チャンネル：やじゅまん2世）の再生数・高評価数・コメント数・登録者数を5分ごとに自動記録しています。</p>
+</header>
+<main>
+  <div class="meta">
+    <span id="updated">読み込み中…</span>
+    <span id="rowsinfo"></span>
+    <button id="refreshBtn" type="button">今すぐ更新</button>
+    <span>5分ごとに自動更新されます</span>
+  </div>
+  <div class="err" id="errbox"></div>
+
+  <div class="cards" id="cards"></div>
+
+  <section class="panel">
+    <h2>累計の推移</h2>
+    <p class="hint">指標と表示範囲を選べます。</p>
+    <div class="controls">
+      <div class="group" id="cumMetric"></div>
+      <div class="group" id="rangeSel" style="margin-left:auto"></div>
+    </div>
+    <canvas id="cumChart" height="300"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>期間変動（ローリング差分）</h2>
+    <p class="hint">各時点で「その時刻 − n期間前」の差分を表示します。「1時間あたり再生数」は常に過去60分との差分です。データのない区間は線が途切れます。</p>
+    <div class="controls">
+      <div class="group" id="deltaMetric"></div>
+    </div>
+    <div class="controls">
+      <span class="glabel">期間 n：</span>
+      <div class="group" id="deltaPeriod"></div>
+    </div>
+    <canvas id="deltaChart" height="300"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>5分ごとの再生数増加</h2>
+    <p class="hint">直近の勢いを見るための、5分刻みの再生数増加です。</p>
+    <canvas id="barChart" height="220"></canvas>
+  </section>
+
+  <section class="panel">
+    <h2>最近の記録</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>時刻（JST）</th><th>再生数</th><th>高評価</th><th>コメント</th><th>登録者数</th></tr></thead>
+        <tbody id="recentBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<footer>
+  データ出所：YouTube Data API v3（5分間隔で自動取得）。本サイトは非公式の記録ページです。
+</footer>
+<div id="tooltip"></div>
+
+<script>
+const SHEET_ID = "1V5X9rnIkv9efqGijds6lnBCVAQd0lrEiEJJuMR2fe7U";
+const GVIZ_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:json";
+
+const METRICS = [
+  {key:"view",    label:"再生数",   color:"#ff4e45"},
+  {key:"like",    label:"高評価",   color:"#ffb020"},
+  {key:"comment", label:"コメント", color:"#4ecdc4"},
+  {key:"subs",    label:"登録者数", color:"#a78bfa"},
+];
+const PERIODS = [
+  {min:5,   label:"5分"},
+  {min:15,  label:"15分"},
+  {min:30,  label:"30分"},
+  {min:60,  label:"1時間"},
+  {min:180, label:"3時間"},
+  {min:360, label:"6時間"},
+  {min:720, label:"12時間"},
+  {min:1440,label:"24時間"},
+];
+const RANGES = [
+  {hours:1,  label:"直近1時間"},
+  {hours:6,  label:"直近6時間"},
+  {hours:24, label:"直近24時間"},
+  {hours:0,  label:"全期間"},
+];
+
+let rows = []; // {t:ms, view, like, comment, subs}
+let state = { cumMetric:"view", deltaMetric:"view", deltaPeriod:60, range:24 };
+
+const fmt = n => (n==null || isNaN(n)) ? "—" : Math.round(n).toLocaleString("ja-JP");
+const fmtSigned = n => (n==null || isNaN(n)) ? "—" : (n>0?"+":"") + Math.round(n).toLocaleString("ja-JP");
+function fmtTime(ms){ const d=new Date(ms); return d.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
+function fmtTimeFull(ms){ const d=new Date(ms); return d.toLocaleString("ja-JP",{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
+
+// ---- nice axis ticks: steps from 1/2/2.5/5 x 10^k, domain snapped to tick multiples ----
+function niceAxis(min, max, target){
+  target = target || 5;
+  if (!(max>min)) { max = min + 1; }
+  const rawStep = (max-min)/target;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep/mag;
+  let step;
+  if (norm <= 1) step = 1; else if (norm <= 2) step = 2; else if (norm <= 2.5) step = 2.5; else if (norm <= 5) step = 5; else step = 10;
+  step *= mag;
+  const lo = Math.floor(min/step)*step;
+  const hi = Math.ceil(max/step)*step;
+  const ticks = [];
+  for (let v=lo; v<=hi+step*0.5; v+=step) ticks.push(Math.abs(v) < step*1e-9 ? 0 : v);
+  return {lo, hi, step, ticks};
+}
+
+function valueAt(series, tMs, tolMs){
+  // nearest sample within tolerance
+  let lo=0, hi=series.length-1, best=null, bestDiff=Infinity;
+  while (lo<=hi){
+    const mid=(lo+hi)>>1, dt=series[mid].t - tMs;
+    if (Math.abs(dt)<bestDiff){ bestDiff=Math.abs(dt); best=series[mid]; }
+    if (dt<0) lo=mid+1; else hi=mid-1;
+  }
+  return (best && bestDiff<=tolMs) ? best : null;
+}
+
+function deltaSeries(metricKey, periodMin){
+  const tol = 90000, out = [];
+  for (const r of rows){
+    const past = valueAt(rows, r.t - periodMin*60000, tol);
+    if (past && r[metricKey]!=null && past[metricKey]!=null) out.push({t:r.t, v:r[metricKey]-past[metricKey]});
+    else out.push({t:r.t, v:null});
+  }
+  return out;
+}
+
+function setupCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = parseInt(cv.getAttribute("height"),10);
+  cv.width = w*dpr; cv.height = h*dpr; cv.style.height = h+"px";
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w, h};
+}
+
+function drawLineChart(cv, points, color, opts){
+  opts = opts || {};
+  const {ctx, w, h} = setupCanvas(cv);
+  const padL = 74, padR = 12, padT = 12, padB = 26;
+  const iw = w-padL-padR, ih = h-padT-padB;
+  ctx.clearRect(0,0,w,h);
+  const vals = points.filter(p=>p.v!=null).map(p=>p.v);
+  if (!vals.length){ ctx.fillStyle="#9aa3b2"; ctx.font="13px sans-serif"; ctx.fillText("データがありません", padL, padT+20); cv._hit=null; return; }
+  let mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+  if (opts.includeZero){ mn = Math.min(mn, 0); mx = Math.max(mx, 0); }
+  const ax = niceAxis(mn, mx, 5);
+  const t0 = points[0].t, t1 = points[points.length-1].t || (t0+1);
+  const X = t => padL + (t-t0)/Math.max(1,(t1-t0))*iw;
+  const Y = v => padT + (ax.hi - v)/(ax.hi-ax.lo)*ih;
+  ctx.font = "11px sans-serif";
+  for (const tv of ax.ticks){
+    const y = Y(tv);
+    ctx.strokeStyle = "#2a2f3a"; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+iw,y); ctx.stroke();
+    ctx.fillStyle = "#9aa3b2"; ctx.textAlign="right"; ctx.fillText(fmt(tv), padL-8, y+4);
+  }
+  if (ax.lo < 0 && ax.hi > 0){ ctx.strokeStyle="#4a5163"; ctx.beginPath(); ctx.moveTo(padL,Y(0)); ctx.lineTo(padL+iw,Y(0)); ctx.stroke(); }
+  // x labels: first / middle / last
+  ctx.fillStyle = "#9aa3b2"; ctx.textAlign="left";
+  const mid = points[Math.floor(points.length/2)];
+  ctx.fillText(fmtTime(t0), padL, h-8);
+  ctx.textAlign="center"; if (mid) ctx.fillText(fmtTime(mid.t), X(mid.t), h-8);
+  ctx.textAlign="right"; ctx.fillText(fmtTime(t1), padL+iw, h-8);
+  // line with gaps
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+  let pen = false;
+  for (const p of points){
+    if (p.v==null){ pen=false; continue; }
+    const x=X(p.t), y=Y(p.v);
+    if (!pen){ ctx.moveTo(x,y); pen=true; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // last point dot
+  const lastP = [...points].reverse().find(p=>p.v!=null);
+  if (lastP){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(X(lastP.t), Y(lastP.v), 3.5, 0, Math.PI*2); ctx.fill(); }
+  cv._hit = {points, X, Y, padL, iw};
+}
+
+function drawBars(cv, points, color){
+  const {ctx, w, h} = setupCanvas(cv);
+  const padL = 74, padR = 12, padT = 12, padB = 26;
+  const iw = w-padL-padR, ih = h-padT-padB;
+  ctx.clearRect(0,0,w,h);
+  const vals = points.map(p=>p.v||0);
+  const mx = Math.max.apply(null, vals.concat([1]));
+  const ax = niceAxis(0, mx, 4);
+  const Y = v => padT + (ax.hi - v)/(ax.hi-ax.lo)*ih;
+  ctx.font = "11px sans-serif";
+  for (const tv of ax.ticks){
+    const y=Y(tv);
+    ctx.strokeStyle="#2a2f3a"; ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+iw,y); ctx.stroke();
+    ctx.fillStyle="#9aa3b2"; ctx.textAlign="right"; ctx.fillText(fmt(tv), padL-8, y+4);
+  }
+  const bw = Math.max(1, iw/Math.max(1,points.length)-1);
+  ctx.fillStyle = color;
+  points.forEach((p,i)=>{
+    const x = padL + (i/Math.max(1,points.length))*iw;
+    const y = Y(p.v||0);
+    ctx.fillRect(x, y, bw, Y(0)-y);
+  });
+  ctx.fillStyle="#9aa3b2"; ctx.textAlign="left";
+  if (points.length){ ctx.fillText(fmtTime(points[0].t), padL, h-8); ctx.textAlign="right"; ctx.fillText(fmtTime(points[points.length-1].t), padL+iw, h-8); }
+  cv._hit = null;
+}
+
+// tooltip on line charts
+const tooltip = document.getElementById("tooltip");
+function attachTooltip(cv, labelFn){
+  cv.addEventListener("mousemove", e=>{
+    const hit = cv._hit; if (!hit){ tooltip.style.display="none"; return; }
+    const rect = cv.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    let best=null, bd=Infinity;
+    for (const p of hit.points){ if (p.v==null) continue; const d=Math.abs(hit.X(p.t)-mx); if (d<bd){bd=d;best=p;} }
+    if (!best){ tooltip.style.display="none"; return; }
+    tooltip.innerHTML = fmtTimeFull(best.t) + "<br>" + labelFn(best.v);
+    tooltip.style.left = (e.clientX+14)+"px"; tooltip.style.top = (e.clientY+10)+"px";
+    tooltip.style.display = "block";
+  });
+  cv.addEventListener("mouseleave", ()=>{ tooltip.style.display="none"; });
+}
+
+function chipGroup(el, items, current, onPick, alt){
+  el.innerHTML = "";
+  for (const it of items){
+    const b = document.createElement("button");
+    b.type="button"; b.className = "chip" + (alt?" alt":"") + (it.value===current ? " on":"");
+    b.textContent = it.label;
+    b.addEventListener("click", ()=>onPick(it.value));
+    el.appendChild(b);
+  }
+}
+
+function currentRangeRows(){
+  if (!rows.length || state.range===0) return rows;
+  const last = rows[rows.length-1].t;
+  return rows.filter(r => r.t >= last - state.range*3600000);
+}
+
+function render(){
+  if (!rows.length) return;
+  const last = rows[rows.length-1];
+  document.getElementById("updated").textContent = "最終更新：" + fmtTimeFull(last.t);
+  document.getElementById("rowsinfo").textContent = "記録数：" + rows.length + "件（" + fmtTime(rows[0].t) + "〜）";
+
+  // cards
+  const cardsEl = document.getElementById("cards");
+  cardsEl.innerHTML = "";
+  for (const m of METRICS){
+    const p1 = valueAt(rows, last.t - 3600000, 90000);
+    const p24 = valueAt(rows, last.t - 86400000, 90000);
+    const d1 = (p1 && last[m.key]!=null && p1[m.key]!=null) ? last[m.key]-p1[m.key] : null;
+    const d24 = (p24 && last[m.key]!=null && p24[m.key]!=null) ? last[m.key]-p24[m.key] : null;
+    const cls = v => v==null ? "" : (v>=0 ? "up":"down");
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = '<div class="label">'+m.label+'</div><div class="value">'+fmt(last[m.key])+'</div>' +
+      '<div class="deltas"><span>1時間 <span class="'+cls(d1)+'">'+fmtSigned(d1)+'</span></span>' +
+      '<span>24時間 <span class="'+cls(d24)+'">'+fmtSigned(d24)+'</span></span></div>';
+    cardsEl.appendChild(div);
+  }
+
+  // controls
+  chipGroup(document.getElementById("cumMetric"), METRICS.map(m=>({value:m.key,label:m.label})), state.cumMetric, v=>{state.cumMetric=v; render();});
+  chipGroup(document.getElementById("rangeSel"), RANGES.map(r=>({value:r.hours,label:r.label})), state.range, v=>{state.range=v; render();}, true);
+  chipGroup(document.getElementById("deltaMetric"), METRICS.map(m=>({value:m.key,label:m.label})), state.deltaMetric, v=>{state.deltaMetric=v; render();});
+  chipGroup(document.getElementById("deltaPeriod"), PERIODS.map(p=>({value:p.min,label:p.label})), state.deltaPeriod, v=>{state.deltaPeriod=v; render();}, true);
+
+  // charts
+  const ranged = currentRangeRows();
+  const cumPts = ranged.map(r=>({t:r.t, v:r[state.cumMetric]}));
+  const cumMeta = METRICS.find(m=>m.key===state.cumMetric);
+  drawLineChart(document.getElementById("cumChart"), cumPts, cumMeta.color);
+
+  const dPtsAll = deltaSeries(state.deltaMetric, state.deltaPeriod);
+  const dSet = new Set(ranged.map(r=>r.t));
+  const dPts = dPtsAll.filter(p=>dSet.has(p.t));
+  const dMeta = METRICS.find(m=>m.key===state.deltaMetric);
+  drawLineChart(document.getElementById("deltaChart"), dPts, dMeta.color, {includeZero:true});
+
+  // 5-min view increases (last 36 points within range, or all ranged if fewer)
+  const inc = [];
+  for (let i=1;i<ranged.length;i++){
+    const a=ranged[i-1], b=ranged[i];
+    inc.push({t:b.t, v:(a.view!=null && b.view!=null) ? b.view-a.view : 0});
+  }
+  drawBars(document.getElementById("barChart"), inc.slice(-48), "#ff4e45");
+
+  // table
+  const tb = document.getElementById("recentBody");
+  tb.innerHTML = "";
+  for (const r of rows.slice(-20).reverse()){
+    const tr = document.createElement("tr");
+    tr.innerHTML = "<td>"+fmtTimeFull(r.t)+"</td><td>"+fmt(r.view)+"</td><td>"+fmt(r.like)+"</td><td>"+fmt(r.comment)+"</td><td>"+fmt(r.subs)+"</td>";
+    tb.appendChild(tr);
+  }
+}
+
+async function load(){
+  const err = document.getElementById("errbox");
+  try {
+    const res = await fetch(GVIZ_URL, {cache:"no-store"});
+    const text = await res.text();
+    const json = JSON.parse(text.substring(text.indexOf("{"), text.lastIndexOf("}")+1));
+    const table = json.table;
+    const parsed = [];
+    for (const row of table.rows){
+      const c = row.c || [];
+      const cell = i => (c[i] && c[i].v != null) ? c[i].v : null;
+      let t = null;
+      const rawT = cell(0);
+      if (typeof rawT === "string"){
+        const m = rawT.match(/Date\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\)/);
+        if (m) t = new Date(+m[1], +m[2], +m[3], +m[4], +m[5], +m[6]).getTime();
+      }
+      if (t==null) continue;
+      parsed.push({t, view:cell(2), like:cell(3), comment:cell(4), subs:cell(6)});
+    }
+    parsed.sort((a,b)=>a.t-b.t);
+    rows = parsed;
+    err.style.display = "none";
+    render();
+  } catch(e){
+    err.textContent = "データの読み込みに失敗しました。しばらくしてから再読み込みしてください。";
+    err.style.display = "block";
+  }
+}
+
+attachTooltip(document.getElementById("cumChart"), v=>fmt(v));
+attachTooltip(document.getElementById("deltaChart"), v=>fmtSigned(v));
+document.getElementById("refreshBtn").addEventListener("click", load);
+let resizeTimer=null;
+window.addEventListener("resize", ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(render, 200); });
+load();
+setInterval(load, 300000);
+</script>
+</body>
+</html>
