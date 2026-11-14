@@ -192,8 +192,10 @@ function deltaSeries(metricKey, periodMin){
 
 function setupCanvas(cv){
   const dpr = window.devicePixelRatio || 1;
-  const w = cv.clientWidth, h = parseInt(cv.getAttribute("height"),10);
-  cv.width = w*dpr; cv.height = h*dpr; cv.style.height = h+"px";
+  if (!cv._cssH) cv._cssH = parseInt(cv.getAttribute("height"), 10) || 300; // remember CSS height once; the height attribute itself grows once we scale for dpr
+  const h = cv._cssH;
+  const w = cv.clientWidth;
+  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr); cv.style.height = h+"px";
   const ctx = cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0);
   return {ctx, w, h};
 }
