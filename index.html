@@ -60,8 +60,8 @@
 </head>
 <body>
 <header>
-  <h1><span class="king">INMU KING</span> 統計ダッシュボード</h1>
-  <p class="lead">YAJU-MC「<a href="https://www.youtube.com/watch?v=RkcI7ase0H0" rel="noopener" target="_blank">INMU KING（修正版）</a>」（チャンネル：やじゅまん2世）の再生数・高評価数・コメント数・登録者数を5分ごとに自動記録しています。グラフはドラッグやピンチで拡大でき、ポイントに触れると値が出ます。</p>
+  <h1><span class="king">INMU KING</span> ほか 統計ダッシュボード</h1>
+  <p class="lead">YAJU-MC「<a href="https://www.youtube.com/watch?v=RkcI7ase0H0" rel="noopener" target="_blank">INMU KING（修正版）</a>」（チャンネル：やじゅまん2世）と「<a href="https://www.youtube.com/watch?v=htnobg4X5Is" rel="noopener" target="_blank">【MV】嘘クセェんだよ / 溝口UG</a>」（チャンネル：チバニャンの波動チャンネル）の再生数・高評価数・コメント数・登録者数を5分ごとに自動記録しています。下のボタンで動画を切り替えられます。グラフはドラッグやピンチで拡大でき、ポイントに触れると値が出ます。</p>
 </header>
 <main>
   <div class="meta">
@@ -71,6 +71,11 @@
     <span>5分ごとに自動更新されます</span>
   </div>
   <div class="err" id="errbox"></div>
+
+  <div class="controls" style="margin:10px 0">
+    <span class="glabel">動画：</span>
+    <div class="group" id="videoSel"></div>
+  </div>
 
   <div class="cards" id="cards"></div>
 
@@ -120,7 +125,6 @@
 <script>
 const SHEET_ID = "1V5X9rnIkv9efqGijds6lnBCVAQd0lrEiEJJuMR2fe7U";
 const GVIZ_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:json";
-
 const METRICS = [
   {key:"view",    label:"再生数",   color:"#ff4e45"},
   {key:"like",    label:"高評価",   color:"#ffb020"},
@@ -143,16 +147,19 @@ const RANGES = [
   {hours:24, label:"直近24時間"},
   {hours:0,  label:"全期間"},
 ];
-
-let rows = []; // {t:ms, view, like, comment, subs}
-let state = { cumMetric:"view", deltaMetric:"view", deltaPeriod:60, range:24 };
+const VIDEOS = [
+  {id:"RkcI7ase0H0", label:"INMU KING（修正版）"},
+  {id:"htnobg4X5Is", label:"嘘クセェんだよ / 溝口UG"},
+];
+let allRows = [];
+let rows = [];
+let state = { cumMetric:"view", deltaMetric:"view", deltaPeriod:60, range:24,
+  video: (function(){ try { return localStorage.getItem("inmu-video") || "RkcI7ase0H0"; } catch(e){ return "RkcI7ase0H0"; } })() };
+function applyVideo(){ rows = allRows.filter(r=>r.vid===state.video); }
 let charts = null;
-
 const fmt = n => (n==null || isNaN(n)) ? "—" : Math.round(n).toLocaleString("ja-JP");
 const fmtSigned = n => (n==null || isNaN(n)) ? "—" : (n>0?"+":"") + Math.round(n).toLocaleString("ja-JP");
 function fmtTimeFull(ms){ const d=new Date(ms); return d.toLocaleString("ja-JP",{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}); }
-
-// nice axis: steps from 1/2/2.5/5 x 10^k, domain snapped to tick multiples (no 1900/3800-style ticks)
 function niceAxis(min, max, target){
   target = target || 5;
   if (!(max>min)) { max = min + 1; }
@@ -164,7 +171,6 @@ function niceAxis(min, max, target){
   step *= mag;
   return { lo: Math.floor(min/step)*step, hi: Math.ceil(max/step)*step, step };
 }
-
 function valueAt(series, tMs, tolMs){
   let lo=0, hi=series.length-1, best=null, bestDiff=Infinity;
   while (lo<=hi){
@@ -174,7 +180,6 @@ function valueAt(series, tMs, tolMs){
   }
   return (best && bestDiff<=tolMs) ? best : null;
 }
-
 function deltaSeries(metricKey, periodMin){
   const tol = 90000, out = [];
   for (const r of rows){
@@ -184,7 +189,6 @@ function deltaSeries(metricKey, periodMin){
   }
   return out;
 }
-
 function axisFor(data, includeZero){
   const vals = data.map(p=>p[1]).filter(v=>v!=null);
   if (!vals.length) return null;
@@ -192,7 +196,6 @@ function axisFor(data, includeZero){
   if (includeZero){ mn = Math.min(mn, 0); mx = Math.max(mx, 0); }
   return niceAxis(mn, mx, 5);
 }
-
 function baseOption(color){
   return {
     animation: false,
@@ -223,7 +226,6 @@ function baseOption(color){
     ]
   };
 }
-
 function yAxisOpt(ax, signed){
   if (!ax) return { type: "value" };
   return {
@@ -232,7 +234,6 @@ function yAxisOpt(ax, signed){
     splitLine: { lineStyle: { color: "#232833" } }
   };
 }
-
 function initCharts(){
   if (typeof echarts === "undefined") return false;
   charts = {
@@ -243,7 +244,6 @@ function initCharts(){
   window.addEventListener("resize", ()=>{ charts.cum.resize(); charts.delta.resize(); charts.bar.resize(); });
   return true;
 }
-
 function applyRangeZoom(){
   if (!charts || !rows.length) return;
   const last = rows[rows.length-1].t;
@@ -255,14 +255,11 @@ function applyRangeZoom(){
     }
   }
 }
-
 function render(){
   if (!rows.length || !charts) return;
   const last = rows[rows.length-1];
   document.getElementById("updated").textContent = "最終更新：" + fmtTimeFull(last.t);
   document.getElementById("rowsinfo").textContent = "記録数：" + rows.length + "件";
-
-  // cards
   const cardsEl = document.getElementById("cards");
   cardsEl.innerHTML = "";
   for (const m of METRICS){
@@ -278,17 +275,14 @@ function render(){
       '<span>24時間 <span class="'+cls(d24)+'">'+fmtSigned(d24)+'</span></span></div>';
     cardsEl.appendChild(div);
   }
-
-  // controls
+  chipGroup(document.getElementById("videoSel"), VIDEOS.map(v=>({value:v.id,label:v.label})), state.video,
+    v=>{ state.video=v; try{ localStorage.setItem("inmu-video", v); }catch(e){} applyVideo(); render(); });
   chipGroup(document.getElementById("cumMetric"), METRICS.map(m=>({value:m.key,label:m.label})), state.cumMetric, v=>{state.cumMetric=v; renderChartsOnly();});
   renderRangeChips();
   chipGroup(document.getElementById("deltaMetric"), METRICS.map(m=>({value:m.key,label:m.label})), state.deltaMetric, v=>{state.deltaMetric=v; renderChartsOnly();});
   chipGroup(document.getElementById("deltaPeriod"), PERIODS.map(p=>({value:p.min,label:p.label})), state.deltaPeriod, v=>{state.deltaPeriod=v; renderChartsOnly();}, true);
-
   renderChartsOnly(true);
   applyRangeZoom();
-
-  // table
   const tb = document.getElementById("recentBody");
   tb.innerHTML = "";
   for (const r of rows.slice(-20).reverse()){
@@ -297,15 +291,12 @@ function render(){
     tb.appendChild(tr);
   }
 }
-
 function renderRangeChips(){
   chipGroup(document.getElementById("rangeSel"), RANGES.map(r=>({value:r.hours,label:r.label})), state.range,
     v=>{ state.range = v; renderRangeChips(); applyRangeZoom(); }, true);
 }
-
 function renderChartsOnly(){
   if (!charts || !rows.length) return;
-  // cumulative
   const cm = METRICS.find(m=>m.key===state.cumMetric);
   const cumData = rows.map(r=>[r.t, r[state.cumMetric]]);
   const cumOpt = baseOption(cm.color);
@@ -316,8 +307,6 @@ function renderChartsOnly(){
     areaStyle: { color: cm.color, opacity: 0.08 }, connectNulls: false, emphasis: { focus: "series" }
   }];
   charts.cum.setOption(cumOpt);
-
-  // delta
   const dm = METRICS.find(m=>m.key===state.deltaMetric);
   const dData = deltaSeries(state.deltaMetric, state.deltaPeriod);
   const dOpt = baseOption(dm.color);
@@ -330,8 +319,6 @@ function renderChartsOnly(){
     markLine: { silent: true, symbol: "none", lineStyle: { color: "#5a6274", width: 1 }, data: [{ yAxis: 0 }] }
   }];
   charts.delta.setOption(dOpt);
-
-  // 5-min view increases (bars, full history, initial zoom = last 48 points)
   const inc = [];
   for (let i=1;i<rows.length;i++){
     const a=rows[i-1], b=rows[i];
@@ -350,7 +337,6 @@ function renderChartsOnly(){
   ];
   charts.bar.setOption(bOpt);
 }
-
 function chipGroup(el, items, current, onPick, alt){
   el.innerHTML = "";
   for (const it of items){
@@ -361,7 +347,6 @@ function chipGroup(el, items, current, onPick, alt){
     el.appendChild(b);
   }
 }
-
 let firstLoad = true;
 async function load(){
   const err = document.getElementById("errbox");
@@ -380,14 +365,14 @@ async function load(){
         if (m) t = new Date(+m[1], +m[2], +m[3], +m[4], +m[5], +m[6]).getTime();
       }
       if (t==null) continue;
-      parsed.push({t, view:cell(2), like:cell(3), comment:cell(4), subs:cell(6)});
+      parsed.push({t, vid:cell(1), view:cell(2), like:cell(3), comment:cell(4), subs:cell(6)});
     }
     parsed.sort((a,b)=>a.t-b.t);
-    rows = parsed;
+    allRows = parsed;
+    applyVideo();
     err.style.display = "none";
     if (firstLoad){ render(); firstLoad = false; }
-    else { renderChartsOnly(); 
-      // refresh cards/table quietly
+    else { renderChartsOnly();
       const last = rows[rows.length-1];
       document.getElementById("updated").textContent = "最終更新：" + fmtTimeFull(last.t);
       document.getElementById("rowsinfo").textContent = "記録数：" + rows.length + "件";
@@ -403,7 +388,6 @@ async function load(){
     err.style.display = "block";
   }
 }
-
 document.getElementById("refreshBtn").addEventListener("click", load);
 if (initCharts()){
   load();
